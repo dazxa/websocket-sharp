@@ -98,6 +98,11 @@ namespace WebSocketSharp
     private TcpClient               _tcpClient;
     private Uri                     _uri;
 
+    private string                  _proxyUrl;
+    private string                  _proxyUserName;
+    private string                  _proxyPassword;
+    private bool                    _useProxy;
+
     #endregion
 
     #region Internal Const Fields
@@ -190,6 +195,46 @@ namespace WebSocketSharp
 
       init ();
     }
+
+    /// <summary>
+    /// Initializes a new instance of the <see cref="WebSocket"/> class.
+    /// </summary>
+    /// <param name="url">The URL that represents the WebSocket URL to connect.</param>
+    /// <param name="proxyUrl">The proxy URL.</param>
+    /// <param name="proxyUserName">Name of the proxy user.</param>
+    /// <param name="proxyPassword">The proxy password.</param>
+    /// <param name="protocols">The protocols.</param>
+    public WebSocket(string url, string proxyUrl, string proxyUserName, string proxyPassword, params string[] protocols)
+    {
+        _useProxy = true;
+        _proxyUrl = proxyUrl;
+        _proxyUserName = proxyUserName;
+        _proxyPassword = proxyPassword;
+
+        if (url == null)
+            throw new ArgumentNullException("url");
+
+        string msg;
+        if (!url.TryCreateWebSocketUri(out _uri, out msg))
+            throw new ArgumentException(msg, "url");
+
+        if (protocols != null && protocols.Length > 0)
+        {
+            msg = protocols.CheckIfValidProtocols();
+            if (msg != null)
+                throw new ArgumentException(msg, "protocols");
+
+            _protocols = protocols;
+        }
+
+        _base64Key = CreateBase64Key();
+        _client = true;
+        _logger = new Logger();
+        _secure = _uri.Scheme == "wss";
+
+        init();
+    }
+
 
     #endregion
 
@@ -1266,7 +1311,18 @@ namespace WebSocketSharp
       var host = _uri.DnsSafeHost;
       var port = _uri.Port;
 
-      _tcpClient = new TcpClient (host, port);
+      if (_useProxy)
+      {
+          var requestUri = new System.Uri(_proxyUrl);
+
+          _tcpClient = TcpProxy.connectViaHTTPProxy(host, port, requestUri.DnsSafeHost, requestUri.Port, _proxyUserName, _proxyPassword);
+      }
+      else
+      {
+          _tcpClient = new TcpClient(host, port);
+      }
+
+
       _stream = WebSocketStream.CreateClientStream (
         _tcpClient, _secure, host, _certValidationCallback);
     }
